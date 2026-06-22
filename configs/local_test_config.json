@@ -1,0 +1,111 @@
+{
+  "timeout": 2,
+  "http_timeout": 5,
+  "auth_attempts": 3,
+  "auth_delay": 1,
+  "allow_commands": false,
+  "enabled_modules": {
+    "core": true,
+    "nmap": false,
+    "vulnerability_lookup": false,
+    "reverse_analysis": false,
+    "threat_detection": false
+  },
+  "targets": [
+    {
+      "ip": "127.0.0.1",
+      "ports": [
+        22,
+        80,
+        443,
+        8080,
+        8443
+      ],
+      "ssh_user": "test_user"
+    }
+  ],
+  "expected_open_ports": [
+    8080
+  ],
+  "ssh_user": "test_user",
+  "http_basic_tests": [],
+  "firmware_files": [
+    "./samples/firmware.bin"
+  ],
+  "app_packages": [
+    "./samples/robot_app.zip"
+  ],
+  "log_dirs": [
+    "./samples/logs"
+  ],
+  "software_inventory": [
+    {
+      "name": "Python HTTP Server",
+      "version": "local-test",
+      "nvd_keyword": "Python HTTP Server"
+    }
+  ],
+  "replay_check_urls": [
+    {
+      "name": "本机HTTP重复请求测试",
+      "url": "http://127.0.0.1:8080/",
+      "method": "GET",
+      "repeat": 3,
+      "interval_sec": 1
+    }
+  ],
+  "monitoring_urls": [
+    "http://127.0.0.1:8080/"
+  ],
+  "input_validation_tests": [
+    {
+      "url": "http://127.0.0.1:8080/",
+      "method": "GET",
+      "param": "q"
+    }
+  ],
+  "role_access_tests": [
+    {
+      "url": "http://127.0.0.1:8080/admin",
+      "headers": {
+        "Authorization": "Bearer INVALID_OR_LOW_PRIV_TOKEN"
+      },
+      "expected_forbidden": true
+    }
+  ],
+  "audit_trigger_urls": [
+    "http://127.0.0.1:8080/not_exist_for_audit_test"
+  ],
+  "backup_command": "",
+  "restore_check_command": "",
+  "nmap": {
+    "path": "nmap",
+    "args": "-sV",
+    "ports": "1-10000",
+    "timeout_sec": 600,
+    "max_targets": 20
+  },
+  "vulnerability_lookup": {
+    "enable_nvd": true,
+    "nvd_api_key": "",
+    "nvd_max_results_per_item": 10,
+    "nvd_delay_sec": 6.5,
+    "enable_osv": false,
+    "osv_packages": [
+      {
+        "name": "requests",
+        "version": "2.31.0",
+        "ecosystem": "PyPI"
+      }
+    ],
+    "enable_pip_audit": false,
+    "pip_audit_command": "python -m pip_audit -f json"
+  },
+  "threat_detection": {
+    "allow_create_eicar": false,
+    "scanner_command": "clamscan {file}",
+    "eicar_filename": "eicar_test_file.com",
+    "timeout_sec": 120,
+    "cleanup": true
+  }
+}

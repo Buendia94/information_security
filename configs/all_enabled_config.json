@@ -1,0 +1,98 @@
+{
+  "timeout": 2,
+  "http_timeout": 5,
+  "auth_attempts": 3,
+  "auth_delay": 1,
+  "allow_commands": false,
+  "enabled_modules": {
+    "core": true,
+    "nmap": true,
+    "vulnerability_lookup": true,
+    "reverse_analysis": true,
+    "threat_detection": true
+  },
+  "targets": [
+    {
+      "ip": "192.168.1.50",
+      "ports": [
+        22,
+        80,
+        443,
+        554,
+        1883,
+        8883,
+        8080,
+        8443,
+        9000
+      ],
+      "ssh_user": "robot_test"
+    }
+  ],
+  "expected_open_ports": [
+    22,
+    8080
+  ],
+  "ssh_user": "test_user",
+  "http_basic_tests": [],
+  "firmware_files": ["/home/buendia94/code/information/gbt45502_tester_project/samples/firmware.bin"],
+  "app_packages": ["/home/buendia94/code/information/gbt45502_tester_project/samples/robot_app.zip"],
+  "log_dirs": [
+    "/var/log",
+    "/home/robot/.ros/log",
+    "/opt/robot/logs"
+  ],
+  "software_inventory": [
+    {
+      "name": "Ubuntu",
+      "version": "22.04",
+      "nvd_keyword": "Ubuntu 22.04"
+    },
+    {
+      "name": "OpenSSH",
+      "version": "8.9",
+      "nvd_keyword": "OpenSSH 8.9"
+    },
+    {
+      "name": "nginx",
+      "version": "1.18.0",
+      "nvd_keyword": "nginx 1.18.0"
+    }
+  ],
+  "replay_check_urls": [],
+  "monitoring_urls": [],
+  "input_validation_tests": [],
+  "role_access_tests": [],
+  "audit_trigger_urls": [],
+  "backup_command": "",
+  "restore_check_command": "",
+  "nmap": {
+    "path": "nmap",
+    "args": "-sV --script vuln",
+    "ports": "1-10000",
+    "timeout_sec": 600,
+    "max_targets": 20
+  },
+  "vulnerability_lookup": {
+    "enable_nvd": true,
+    "nvd_api_key": "",
+    "nvd_max_results_per_item": 10,
+    "nvd_delay_sec": 6.5,
+    "enable_osv": true,
+    "osv_packages": [
+      {
+        "name": "requests",
+        "version": "2.31.0",
+        "ecosystem": "PyPI"
+      }
+    ],
+    "enable_pip_audit": true,
+    "pip_audit_command": "python -m pip_audit -f json"
+  },
+  "threat_detection": {
+    "allow_create_eicar": true,
+    "scanner_command": "clamscan {file}",
+    "eicar_filename": "eicar_test_file.com",
+    "timeout_sec": 120,
+    "cleanup": true
+  }
+}

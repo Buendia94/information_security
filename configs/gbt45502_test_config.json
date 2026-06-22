@@ -1,0 +1,127 @@
+{
+  "timeout": 2,
+  "http_timeout": 5,
+  "auth_attempts": 3,
+  "auth_delay": 1,
+  "allow_commands": false,
+  "enabled_modules": {
+    "core": true,
+    "nmap": false,
+    "vulnerability_lookup": false,
+    "reverse_analysis": false,
+    "threat_detection": false
+  },
+  "targets": [
+    {
+      "ip": "192.168.1.10",
+      "ports": [
+        22,
+        80,
+        443,
+        554,
+        1883,
+        8080,
+        8443
+      ],
+      "ssh_user": "test_user"
+    }
+  ],
+  "expected_open_ports": [
+    22,
+    443
+  ],
+  "ssh_user": "test_user",
+  "http_basic_tests": [
+    {
+      "url": "https://192.168.1.10/admin",
+      "username": "test_user"
+    }
+  ],
+  "firmware_files": [
+    "./samples/firmware.bin"
+  ],
+  "app_packages": [
+    "./samples/robot_app.zip"
+  ],
+  "log_dirs": [
+    "./samples/logs"
+  ],
+  "software_inventory": [
+    {
+      "name": "Ubuntu",
+      "version": "24.04",
+      "nvd_keyword": "Ubuntu 24.04"
+    },
+    {
+      "name": "nginx",
+      "version": "1.24.0",
+      "nvd_keyword": "nginx 1.24.0"
+    }
+  ],
+  "replay_check_urls": [
+    {
+      "name": "后台状态查询重放测试",
+      "url": "http://127.0.0.1:8080/api/status",
+      "method": "GET",
+      "headers": {
+        "Authorization": "Bearer xxx"
+      },
+      "repeat": 3,
+      "interval_sec": 1
+    }
+  ],
+  "monitoring_urls": [
+    "https://192.168.1.10/metrics"
+  ],
+  "input_validation_tests": [
+    {
+      "url": "https://192.168.1.10/api/search",
+      "method": "GET",
+      "param": "q"
+    }
+  ],
+  "role_access_tests": [
+    {
+      "url": "https://192.168.1.10/api/admin/config",
+      "headers": {
+        "Authorization": "Bearer INVALID_OR_LOW_PRIV_TOKEN"
+      },
+      "expected_forbidden": true
+    }
+  ],
+  "audit_trigger_urls": [
+    "https://192.168.1.10/api/not_exist_for_audit_test"
+  ],
+  "backup_command": "",
+  "restore_check_command": "",
+  "nmap": {
+    "path": "nmap",
+    "args": "-sV",
+    "ports": "1-10000",
+    "timeout_sec": 600,
+    "max_targets": 20
+  },
+  "vulnerability_lookup": {
+    "enable_nvd": true,
+    "nvd_api_key": "",
+    "nvd_max_results_per_item": 10,
+    "nvd_delay_sec": 6.5,
+    "enable_osv": false,
+    "osv_packages": [
+      {
+        "name": "requests",
+        "version": "2.31.0",
+        "ecosystem": "PyPI"
+      }
+    ],
+    "enable_pip_audit": false,
+    "pip_audit_command": "python -m pip_audit -f json"
+  },
+  "threat_detection": {
+    "allow_create_eicar": false,
+    "scanner_command": "clamscan {file}",
+    "eicar_filename": "eicar_test_file.com",
+    "timeout_sec": 120,
+    "cleanup": true
+  }
+}

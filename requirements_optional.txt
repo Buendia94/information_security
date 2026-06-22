@@ -1,0 +1,4 @@
+# 可选增强依赖
+pip-audit>=2.7.0
+androguard>=4.1.0
+lief>=0.14.0
