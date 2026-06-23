@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
-import hashlib, platform, re, time, zipfile
+import hashlib, os, platform, re, shutil, subprocess, time, zipfile
 from pathlib import Path
 from typing import Any, Dict, List
 try:
@@ -11,6 +11,19 @@ try:
     import paramiko
 except Exception:
     paramiko=None
+
+LOGIN_FAILURE_KEYWORDS = [
+    "invalid",
+    "failed",
+    "incorrect",
+    "unauthorized",
+    "未授权",
+    "失败",
+    "错误",
+    "密码错误",
+    "登录失败",
+    "用户名或密码"
+]
 
 from ..result import TestResult
 from ..utils import AUTH_KEYWORDS, COMMON_PORT_HINTS, DEFAULT_PORTS, add_query, grab_banner, is_http_port, run_command, scan_sensitive_bytes, sha256_file, tcp_connect, tls_probe, url_for
@@ -39,7 +52,11 @@ class CoreTests:
         self.test_input_validation()
         self.test_role_access_control()
         self.test_audit_log_hooks()
-        self.add_manual_items()
+        self.test_secure_boot_trust_validation()
+        self.test_update_rollback()
+        self.test_storage_protection()
+        self.test_wireless_security()
+        self.test_mtls_authentication()
         return self.results
 
     def test_physical_debug_interface(self):
@@ -67,6 +84,101 @@ class CoreTests:
     def test_dolphin_attack_plan(self):
         gp=self.outdir/"generate_dolphin_test_wav.py"; gp.write_text(DOLPHIN_GENERATOR_CODE,encoding="utf-8")
         self.add("8.1.1.3","防海豚音攻击-测试信号生成脚本","生成正常频段、次声波和超声波测试信号；实际声场需用声源、换能器、声级计/频谱仪校准。","INFO",{"frequencies_hz":[10,15,20,1000,10000,20000,25000,30000,40000],"generator_script":str(gp)},"普通音箱难以可靠输出10/15Hz和25kHz以上信号，需低频声源或超声换能器。")
+
+    def _run_local_command(self,cmd:str)->Dict[str,Any]:
+        try:
+            cp=subprocess.run(cmd,shell=True,capture_output=True,text=True,timeout=int(self.config.get("command_timeout",30)))
+            return {"command":cmd,"returncode":cp.returncode,"stdout":cp.stdout.strip(),"stderr":cp.stderr.strip()}
+        except Exception as e:
+            return {"command":cmd,"error":str(e)}
+
+    def _path_mount_info(self,path:Path)->Dict[str,Any]:
+        info={"path":str(path),"exists":path.exists()}
+        if not path.exists(): return info
+        info["is_file"] = path.is_file(); info["is_dir"] = path.is_dir()
+        try:
+            target=str(path.resolve())
+            mount=None
+            with open('/proc/mounts','r',encoding='utf-8',errors='ignore') as f:
+                for line in f:
+                    parts=line.split();
+                    if len(parts) < 4: continue
+                    mnt=parts[1]; opts=parts[3].split(',')
+                    if target.startswith(mnt.rstrip('/')) and (mount is None or len(mnt) > len(mount[0])):
+                        mount=(mnt,opts)
+            if mount:
+                info["mount_point"] = mount[0]
+                info["mount_options"] = mount[1]
+                info["mounted_readonly"] = 'ro' in mount[1]
+        except Exception as e:
+            info["mount_info_error"] = str(e)
+        return info
+
+    def _check_immutable_attr(self,path:Path)->Dict[str,Any]:
+        out={"path":str(path),"immutable":False}
+        if not self.config.get("allow_commands",False):
+            out["skipped"] = "allow_commands=false"
+            return out
+        if shutil.which("lsattr") is None:
+            out["skipped"] = "lsattr unavailable"
+            return out
+        try:
+            cp=self._run_local_command(f"lsattr -d {str(path)}")
+            if cp.get("stdout"):
+                out["command_output"] = cp["stdout"]
+                out["immutable"] = 'i' in cp["stdout"].split()[0]
+            else:
+                out["command_output"] = cp.get("stderr")
+        except Exception as e:
+            out["error"] = str(e)
+        return out
+
+    def _find_secure_boot_status(self)->Dict[str,Any]:
+        out={}
+        if self.config.get("secure_boot_check_command") and self.config.get("allow_commands",False):
+            out["command"] = self.config["secure_boot_check_command"]
+            out["result"] = self._run_local_command(out["command"])
+            return out
+        if platform.system().lower() != "linux":
+            out["note"] = "仅支持本机 Linux EFI 安全启动检测，远端目标无法自动检查。"
+            return out
+        if shutil.which("mokutil"):
+            out["mokutil"] = self._run_local_command("mokutil --sb-state")
+            return out
+        efidir=Path("/sys/firmware/efi/efivars")
+        if efidir.exists():
+            files=list(efidir.glob("SecureBoot-*"))
+            if files:
+                try:
+                    data=files[0].read_bytes()
+                    out["secure_boot_enabled"] = bool(data[4])
+                    out["source"] = str(files[0])
+                except Exception as e:
+                    out["error"] = str(e)
+                return out
+        out["note"] = "未找到 EFI SecureBoot 状态或 Mokutil 工具。"
+        return out
+
+    def _http_form_wrong_password_test(self,ep:Dict[str,Any])->Dict[str,Any]:
+        out={"service":"http_form","url":ep.get("url"),"username":ep.get("username","test"),"attempts":ep.get("attempts",1),"unexpected_success":False,"events":[]}
+        if not requests:
+            out["error"] = "requests未安装"
+            return out
+        wrong=ep.get("wrong_password","WrongPassword_For_GBT45502_Test_123!")
+        username_field=ep.get("username_field","username")
+        password_field=ep.get("password_field","password")
+        for i in range(out["attempts"]):
+            try:
+                data={username_field:out["username"], password_field:wrong}
+                resp=self.session.post(out["url"],data=data,timeout=self.config.get("http_timeout",5),allow_redirects=False)
+                body=resp.text.lower()
+                rejected=resp.status_code in [401,403] or any(k in body for k in LOGIN_FAILURE_KEYWORDS)
+                success=resp.status_code in [200,302] and not rejected
+                out["events"].append({"attempt":i+1,"status_code":resp.status_code,"rejected":rejected,"location":resp.headers.get("Location"),"failure_hints":[k for k in LOGIN_FAILURE_KEYWORDS if k in body][:5]})
+                if success: out["unexpected_success"] = True
+            except Exception as e:
+                out["events"].append({"attempt":i+1,"error":str(e)})
+        return out
 
     def test_ports_services_auth(self):
         expected=set(self.config.get("expected_open_ports",[])); allf=[]; unexp=[]
@@ -105,7 +217,10 @@ class CoreTests:
             ip=t["ip"]; ssh_user=t.get("ssh_user") or self.config.get("ssh_user")
             ok,_,_=tcp_connect(ip,22,self.config.get("timeout",2))
             if ok and ssh_user: findings.append(self.ssh_wrong_password_test(ip,22,ssh_user,attempts))
-        for item in self.config.get("http_basic_tests",[]): findings.append(self.http_basic_wrong_password_test(item["url"],item["username"],attempts))
+        for item in self.config.get("http_basic_tests",[]):
+            findings.append(self.http_basic_wrong_password_test(item["url"],item["username"],attempts))
+        for item in self.config.get("http_form_tests",[]):
+            findings.append(self._http_form_wrong_password_test(item))
         self.add("8.1.1.4 / 8.1.2.1 / 8.2.2.2 / 8.3.1.2 / 8.3.3.1","身份验证抗暴力破解/错误口令有限验证","仅使用固定错误口令进行少量认证失败测试，观察拒绝、延迟、锁定等防护迹象。","WARN" if any(x.get("unexpected_success") for x in findings) else ("INFO" if findings else "MANUAL"),{"auth_test_findings":findings},"建议配合人工检查密码复杂度策略、失败次数限制、账户锁定、验证码、多因素认证、证书认证等配置。")
     def ssh_wrong_password_test(self,ip,port,username,attempts):
         out={"service":"ssh","ip":ip,"port":port,"username":username,"attempts":attempts,"unexpected_success":False,"events":[]}
@@ -276,9 +391,98 @@ class CoreTests:
             except Exception as e: findings.append({"url":url,"error":str(e)})
         self.add("8.1.2.6 / 8.3.1.1","安全审计事件触发留证","访问配置的测试URL或错误登录接口，触发用户访问/异常事件；日志记录需在后台审计日志中人工核查。","INFO" if findings else "MANUAL",{"audit_trigger_findings":findings},"应核查日志是否记录用户、时间、来源IP、操作对象、操作结果、异常类型等关键字段。")
 
-    def add_manual_items(self):
-        for clause,name,sug in [("8.1.2.8","可信验证","检查Secure Boot/可信根/引导加载程序/应用可信验证配置；异常注入需在隔离环境人工执行。"),("8.1.4.4 / 8.2.2.7","更新异常回滚","固件/软件更新中断电、断网、强制重启需现场安全执行，脚本仅记录版本和哈希。"),("8.3.1.3","防格式化","需查看物理写保护、逻辑写保护、存储分区保护策略或虚拟化环境配置。"),("8.1.3.3","无线安全","WAPI/蓝牙/Zigbee安全配置需结合无线扫描仪、协议分析仪和设备配置界面核查。"),("8.1.3.2","双向身份验证","mTLS需准备客户端证书/无效证书分别访问验证，脚本TLS探测不能完全替代。")]:
-            self.add(clause,name,"人工/半自动核查项","MANUAL",{},sug)
+    def test_secure_boot_trust_validation(self):
+        evidence = {"secure_boot_check_command": self.config.get("secure_boot_check_command")}
+        result = self._find_secure_boot_status()
+        evidence.update(result)
+        if result.get("result"):
+            status = "PASS" if result["result"].get("returncode") == 0 else "WARN"
+        elif result.get("secure_boot_enabled") is True:
+            status = "PASS"
+        elif result.get("secure_boot_enabled") is False:
+            status = "WARN"
+        else:
+            status = "MANUAL"
+        self.add("8.1.2.8","可信验证","人工/半自动核查项","%s" % status,evidence,"检查Secure Boot/可信根/引导加载程序/应用可信验证配置；异常注入需在隔离环境人工执行。")
+
+    def test_update_rollback(self):
+        evidence={}
+        status="MANUAL"
+        if self.config.get("update_check_command"):
+            if self.config.get("allow_commands",False):
+                evidence["update_check"] = self._run_local_command(self.config["update_check_command"])
+                status = "PASS" if evidence["update_check"].get("returncode") == 0 else "WARN"
+            else:
+                evidence["update_check"] = {"command":self.config["update_check_command"],"skipped":"未设置allow_commands=true，未执行外部命令"}
+        if self.config.get("rollback_check_command"):
+            if self.config.get("allow_commands",False):
+                evidence["rollback_check"] = self._run_local_command(self.config["rollback_check_command"])
+                if evidence["rollback_check"].get("returncode") != 0: status = "WARN"
+                elif status == "MANUAL": status = "PASS"
+            else:
+                evidence["rollback_check"] = {"command":self.config["rollback_check_command"],"skipped":"未设置allow_commands=true，未执行外部命令"}
+                if status == "MANUAL": status = "INFO"
+        self.add("8.1.4.4 / 8.2.2.7","更新异常回滚","固件/软件更新中断电、断网、强制重启需现场安全执行，脚本仅记录版本和哈希。",status,evidence,"固件/软件更新中断电、断网、强制重启需现场安全执行，脚本仅记录版本和哈希。")
+
+    def test_storage_protection(self):
+        findings=[]; paths=[Path(x) for x in self.config.get("storage_protection_paths",[])]
+        for p in paths:
+            info=self._path_mount_info(p); info["immutable"] = None
+            if p.exists() and p.is_file(): info["immutable"] = self._check_immutable_attr(p)
+            elif p.exists() and p.is_dir(): info["immutable"] = self._check_immutable_attr(p)
+            findings.append(info)
+        if not paths:
+            self.add("8.3.1.3","防格式化","需查看物理写保护、逻辑写保护、存储分区保护策略或虚拟化环境配置。","MANUAL",{"storage_protection_findings":findings},"需查看物理写保护、逻辑写保护、存储分区保护策略或虚拟化环境配置。")
+            return
+        warns=[f for f in findings if f.get("exists") and not f.get("mounted_readonly") and not (isinstance(f.get("immutable"),dict) and f["immutable"].get("immutable"))]
+        status="PASS" if findings and not warns else ("WARN" if warns else "MANUAL")
+        self.add("8.3.1.3","防格式化","需查看物理写保护、逻辑写保护、存储分区保护策略或虚拟化环境配置。",status,{"storage_protection_findings":findings},"需查看物理写保护、逻辑写保护、存储分区保护策略或虚拟化环境配置。")
+
+    def test_wireless_security(self):
+        findings=[]
+        cmd=self.config.get("wireless_scan_command")
+        if cmd:
+            if self.config.get("allow_commands",False):
+                findings.append(self._run_local_command(cmd))
+            else:
+                findings.append({"command":cmd,"skipped":"未设置allow_commands=true，未执行无线扫描命令"})
+        if self.config.get("wireless_interfaces"):
+            findings.append({"wireless_interfaces":self.config.get("wireless_interfaces")})
+        if not findings:
+            self.add("8.1.3.3","无线安全","WAPI/蓝牙/Zigbee安全配置需结合无线扫描仪、协议分析仪和设备配置界面核查。","MANUAL",{},"WAPI/蓝牙/Zigbee安全配置需结合无线扫描仪、协议分析仪和设备配置界面核查。")
+            return
+        status="PASS"
+        if any(f.get("skipped") for f in findings): status="INFO"
+        self.add("8.1.3.3","无线安全","WAPI/蓝牙/Zigbee安全配置需结合无线扫描仪、协议分析仪和设备配置界面核查。",status,{"wireless_security_findings":findings},"WAPI/蓝牙/Zigbee安全配置需结合无线扫描仪、协议分析仪和设备配置界面核查。")
+
+    def test_mtls_authentication(self):
+        tests=self.config.get("mtls_tests",[])
+        findings=[]
+        if not tests:
+            self.add("8.1.3.2","双向身份验证","mTLS需准备客户端证书/无效证书分别访问验证，脚本TLS探测不能完全替代。","MANUAL",{},"mTLS需准备客户端证书/无效证书分别访问验证，脚本TLS探测不能完全替代。")
+            return
+        if not requests:
+            self.add("8.1.3.2","双向身份验证","requests 未安装，无法执行 mTLS 测试。","ERROR",{"error":"requests未安装"},"请执行 pip install requests 后重试。")
+            return
+        for t in tests:
+            item={"name":t.get("name",t.get("url","未命名mTLS测试")),"url":t.get("url"),"cert":t.get("cert"),"key":t.get("key"),"success_with_cert":False,"status_with_cert":None,"status_without_cert":None,"events":[]}
+            try:
+                resp=self.session.get(item["url"],cert=(item["cert"],item["key"]),timeout=self.config.get("http_timeout",5),verify=False,allow_redirects=False)
+                item["status_with_cert"] = resp.status_code
+                item["success_with_cert"] = resp.status_code in [200,201,204]
+                item["events"].append({"with_cert":True,"status":resp.status_code})
+            except Exception as e:
+                item["events"].append({"with_cert":True,"error":str(e)})
+            try:
+                resp2=self.session.get(item["url"],timeout=self.config.get("http_timeout",5),verify=False,allow_redirects=False)
+                item["status_without_cert"] = resp2.status_code
+                item["events"].append({"with_cert":False,"status":resp2.status_code})
+            except Exception as e:
+                item["events"].append({"with_cert":False,"error":str(e)})
+            findings.append(item)
+        insecure = any((not x.get("success_with_cert")) or x.get("status_without_cert") in [200,201,204] for x in findings)
+        status = "PASS" if findings and not insecure else ("WARN" if findings else "MANUAL")
+        self.add("8.1.3.2","双向身份验证","mTLS需准备客户端证书/无效证书分别访问验证，脚本TLS探测不能完全替代。",status,{"mtls_tests":findings},"mTLS需准备客户端证书/无效证书分别访问验证，脚本TLS探测不能完全替代。")
 
 DOLPHIN_GENERATOR_CODE=r"""# -*- coding: utf-8 -*-
 import math, wave, struct

@@ -51,7 +51,7 @@ class ReverseAnalysisModule:
         out={"androguard_available":False}
         try:
             from androguard.core.apk import APK
-            import pdb;pdb.set_trace()
+            # import pdb;pdb.set_trace()
             a=APK(str(f)); out.update({"androguard_available":True,"apk_package":a.get_package(),"apk_app_name":a.get_app_name(),"apk_permissions_sample":a.get_permissions()[:50],"apk_min_sdk":a.get_min_sdk_version(),"apk_target_sdk":a.get_target_sdk_version(),"apk_valid_apk":a.is_valid_APK()})
         except Exception as e: out["androguard_note"]=f"未使用androguard或解析失败：{e}"
         return out
@@ -59,7 +59,7 @@ class ReverseAnalysisModule:
         out={"lief_available":False}
         try:
             import lief
-            import pdb;pdb.set_trace()
+            # import pdb;pdb.set_trace()
             binary=lief.parse(str(f)); out["lief_available"]=True
             if binary is None: out["lief_parse"]="not supported or parse failed"; return out
             out["binary_format"]=str(binary.format); out["binary_entrypoint"]=getattr(binary,"entrypoint",None)

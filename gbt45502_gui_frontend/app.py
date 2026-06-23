@@ -29,6 +29,18 @@ def find_backend_root() -> Path:
     return APP_DIR
 
 BACKEND_ROOT = find_backend_root()
+GUI_RUNTIME_SETTINGS = APP_DIR / "gui_runtime_settings.json"
+
+def load_runtime_settings() -> Dict[str, Any]:
+    if GUI_RUNTIME_SETTINGS.exists():
+        try:
+            return json.loads(GUI_RUNTIME_SETTINGS.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    return {}
+
+def save_runtime_settings(data: Dict[str, Any]) -> None:
+    GUI_RUNTIME_SETTINGS.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 def deep_get(data: Any, path: List[Any]) -> Any:
     cur = data
@@ -135,6 +147,10 @@ class SettingsPage(QWidget):
         title=QLabel("测试设置 / JSON 全量配置"); title.setObjectName("PageTitle")
         desc=QLabel("左侧树状结构展示 JSON 全部内容；选择节点后可在右侧修改，支持 dict/list 原始 JSON 编辑。")
         desc.setObjectName("PageDesc"); layout.addWidget(title); layout.addWidget(desc)
+        hero=QLabel(); hp=ASSET_DIR/"security_hero.png"
+        if hp.exists():
+            hero.setPixmap(QPixmap(str(hp)).scaledToHeight(140,Qt.TransformationMode.SmoothTransformation))
+            layout.addWidget(hero)
         self.editor=ConfigTreeEditor(); layout.addWidget(self.editor,1)
         for p in [BACKEND_ROOT/"configs"/"enhanced_example_config.json", BACKEND_ROOT/"configs"/"local_test_config.json", BACKEND_ROOT/"configs"/"gbt45502_test_config.json"]:
             if p.exists(): self.editor.load_file(p); break
@@ -142,17 +158,41 @@ class SettingsPage(QWidget):
 class TestPage(QWidget):
     def __init__(self, settings_page: SettingsPage, parent=None):
         super().__init__(parent); self.settings_page=settings_page; self.process:QProcess|None=None
+        self.runtime_settings = load_runtime_settings()
         layout=QVBoxLayout(self); header=QHBoxLayout(); box=QVBoxLayout()
         title=QLabel("测试主界面"); title.setObjectName("PageTitle")
         desc=QLabel("执行 GB/T 45502-2025 自动化/半自动化测试；支持核心测试、Nmap、漏洞联网、反汇编辅助、EICAR威胁检测。")
         desc.setObjectName("PageDesc"); box.addWidget(title); box.addWidget(desc); header.addLayout(box,1)
         self.status_label=QLabel("待启动"); self.status_label.setObjectName("StatusPill"); header.addWidget(self.status_label); layout.addLayout(header)
+        hero=QLabel(); hp=ASSET_DIR/"security_hero.png"
+        if hp.exists():
+            hero.setPixmap(QPixmap(str(hp)).scaledToWidth(900,Qt.TransformationMode.SmoothTransformation))
+            layout.addWidget(hero)
         grid=QGridLayout(); self.cards={}
-        modules=[("core","核心测试","端口/认证/TLS/日志/重放/输入验证/权限"),("nmap","Nmap增强","服务版本、OS、NSE脚本留证"),("vulnerability_lookup","漏洞联网","NVD/OSV/pip-audit候选漏洞查询"),("reverse_analysis","反汇编辅助","LIEF/Androguard静态辅助分析"),("threat_detection","威胁检测","EICAR + ClamAV/EDR安全样本检测")]
-        for i,(key,name,sub) in enumerate(modules):
-            c=CyberCard(); cb=QCheckBox(name); cb.setObjectName("ModuleCheck"); tip=QLabel(sub); tip.setObjectName("CardText")
+        modules=[
+            ("core","核心测试","端口/认证/TLS/日志/重放/输入验证/权限","security_shield.png"),
+            ("nmap","Nmap增强","服务版本、OS、NSE脚本留证","network_scan.png"),
+            ("vulnerability_lookup","漏洞联网","NVD/OSV/pip-audit候选漏洞查询","vuln_radar.png"),
+            ("reverse_analysis","反汇编辅助","LIEF/Androguard静态辅助分析","binary_reverse.png"),
+            ("threat_detection","威胁检测","EICAR + ClamAV/EDR安全样本检测","malware_scan.png")
+        ]
+        for i,(key,name,sub,img) in enumerate(modules):
+            c=CyberCard()
+            ip=ASSET_DIR/img
+            if ip.exists():
+                pic=QLabel(); pic.setPixmap(QPixmap(str(ip)).scaledToWidth(260,Qt.TransformationMode.SmoothTransformation)); c.layout.addWidget(pic)
+            cb=QCheckBox(name); cb.setObjectName("ModuleCheck"); tip=QLabel(sub); tip.setObjectName("CardText")
             c.layout.addWidget(cb); c.layout.addWidget(tip); self.cards[key]=cb; grid.addWidget(c,i//3,i%3)
         layout.addLayout(grid)
+        path_card=CyberCard("运行路径配置")
+        path_grid=QGridLayout()
+        self.python_exec=QLineEdit(self.runtime_settings.get("python_exec", sys.executable)); self.python_exec.setPlaceholderText("Python执行文件，例如 /home/user/miniconda3/envs/gbt45502/bin/python")
+        self.script_path=QLineEdit(self.runtime_settings.get("script_path", str(BACKEND_ROOT/"run_tester.py"))); self.script_path.setPlaceholderText("后端执行脚本路径，例如 /home/user/gbt45502_tester_project/run_tester.py")
+        self.python_browse=QPushButton("选择Python"); self.script_browse=QPushButton("选择脚本"); self.save_runtime_btn=QPushButton("保存运行路径")
+        path_grid.addWidget(QLabel("Python执行文件："),0,0); path_grid.addWidget(self.python_exec,0,1); path_grid.addWidget(self.python_browse,0,2)
+        path_grid.addWidget(QLabel("执行脚本路径："),1,0); path_grid.addWidget(self.script_path,1,1); path_grid.addWidget(self.script_browse,1,2)
+        path_grid.addWidget(self.save_runtime_btn,2,2)
+        path_card.layout.addLayout(path_grid); layout.addWidget(path_card)
         mid=QHBoxLayout(); self.config_path=QLineEdit(); self.config_path.setPlaceholderText("配置JSON路径")
         self.outdir=QLineEdit(str(BACKEND_ROOT/"reports"/("ui_run_"+datetime.now().strftime("%Y%m%d_%H%M%S"))))
         self.refresh_btn=QPushButton("读取设置页配置"); self.start_btn=QPushButton("开始测试"); self.stop_btn=QPushButton("停止"); self.stop_btn.setEnabled(False)
@@ -160,7 +200,22 @@ class TestPage(QWidget):
         self.command_preview=QLineEdit(); self.command_preview.setReadOnly(True); layout.addWidget(self.command_preview)
         self.progress=QProgressBar(); self.progress.setRange(0,0); self.progress.hide(); layout.addWidget(self.progress)
         self.console=QTextEdit(); self.console.setReadOnly(True); self.console.setObjectName("Console"); layout.addWidget(self.console,1)
-        self.refresh_btn.clicked.connect(self.refresh_from_settings); self.start_btn.clicked.connect(self.start_test); self.stop_btn.clicked.connect(self.stop_test); self.refresh_from_settings()
+        self.refresh_btn.clicked.connect(self.refresh_from_settings); self.start_btn.clicked.connect(self.start_test); self.stop_btn.clicked.connect(self.stop_test)
+        self.python_browse.clicked.connect(self.choose_python); self.script_browse.clicked.connect(self.choose_script); self.save_runtime_btn.clicked.connect(self.save_runtime)
+        self.python_exec.textChanged.connect(self.update_command_preview); self.script_path.textChanged.connect(self.update_command_preview); self.config_path.textChanged.connect(self.update_command_preview); self.outdir.textChanged.connect(self.update_command_preview)
+        self.refresh_from_settings()
+    def choose_python(self):
+        path,_=QFileDialog.getOpenFileName(self,"选择Python执行文件",str(Path(self.python_exec.text()).parent if self.python_exec.text() else Path.home()),"All Files (*)")
+        if path: self.python_exec.setText(path)
+
+    def choose_script(self):
+        path,_=QFileDialog.getOpenFileName(self,"选择后端执行脚本",str(BACKEND_ROOT),"Python Files (*.py);;All Files (*)")
+        if path: self.script_path.setText(path)
+
+    def save_runtime(self):
+        save_runtime_settings({"python_exec":self.python_exec.text(),"script_path":self.script_path.text()})
+        QMessageBox.information(self,"保存成功",f"已保存运行路径配置：{GUI_RUNTIME_SETTINGS}")
+
     def refresh_from_settings(self):
         cfg=self.settings_page.editor.config or {}; fp=self.settings_page.editor.file_path
         if fp: self.config_path.setText(str(fp))
@@ -175,18 +230,26 @@ class TestPage(QWidget):
         fp=self.settings_page.editor.file_path
         if fp: fp.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
     def update_command_preview(self):
-        run=BACKEND_ROOT/"run_tester.py"; cfg=self.config_path.text() or str(BACKEND_ROOT/"configs"/"enhanced_example_config.json"); out=self.outdir.text()
-        self.command_preview.setText(f'{sys.executable} "{run}" --config "{cfg}" --outdir "{out}" --confirm-authorized')
+        py=self.python_exec.text().strip() or sys.executable
+        run=self.script_path.text().strip() or str(BACKEND_ROOT/"run_tester.py")
+        cfg=self.config_path.text().strip() or str(BACKEND_ROOT/"configs"/"enhanced_example_config.json")
+        out=self.outdir.text().strip()
+        self.command_preview.setText(f'"{py}" "{run}" --config "{cfg}" --outdir "{out}" --confirm-authorized')
     def start_test(self):
-        self.update_config_modules(); self.update_command_preview(); run=BACKEND_ROOT/"run_tester.py"
-        if not run.exists(): QMessageBox.warning(self,"未找到后端",f"未找到 run_tester.py：{run}\n请把前端目录放到项目根目录或其上一级。"); return
+        self.update_config_modules(); self.update_command_preview()
+        py=Path(self.python_exec.text().strip() or sys.executable)
+        run=Path(self.script_path.text().strip() or str(BACKEND_ROOT/"run_tester.py"))
+        if not py.exists(): QMessageBox.warning(self,"Python不存在",f"Python执行文件不存在：{py}"); return
+        if not run.exists(): QMessageBox.warning(self,"脚本不存在",f"执行脚本不存在：{run}\n请在运行路径配置中选择 run_tester.py。"); return
         cfg=Path(self.config_path.text())
         if not cfg.exists(): QMessageBox.warning(self,"配置不存在",f"配置文件不存在：{cfg}"); return
+        save_runtime_settings({"python_exec":self.python_exec.text(),"script_path":self.script_path.text()})
         self.console.clear(); self.console.append(">>> 启动测试任务"); self.console.append(self.command_preview.text())
         self.status_label.setText("运行中"); self.progress.show(); self.start_btn.setEnabled(False); self.stop_btn.setEnabled(True)
-        self.process=QProcess(self); self.process.setWorkingDirectory(str(BACKEND_ROOT))
+        self.process=QProcess(self); self.process.setWorkingDirectory(str(run.parent))
         self.process.readyReadStandardOutput.connect(self.on_stdout); self.process.readyReadStandardError.connect(self.on_stderr); self.process.finished.connect(self.on_finished)
-        self.process.start(sys.executable,[str(run),"--config",str(cfg),"--outdir",self.outdir.text(),"--confirm-authorized"])
+        self.process.start(str(py),[str(run),"--config",str(cfg),"--outdir",self.outdir.text(),"--confirm-authorized"])
+
     def on_stdout(self):
         if self.process:
             text=bytes(self.process.readAllStandardOutput()).decode(errors="ignore"); self.console.moveCursor(QTextCursor.MoveOperation.End); self.console.insertPlainText(text)
@@ -203,6 +266,8 @@ class ResultsPage(QWidget):
         super().__init__(parent); self.report_json=None; layout=QVBoxLayout(self)
         title=QLabel("测试结果"); title.setObjectName("PageTitle"); desc=QLabel("载入 JSON 报告后，可查看汇总、结果明细和 Markdown 报告内容。"); desc.setObjectName("PageDesc")
         layout.addWidget(title); layout.addWidget(desc)
+        hero=QLabel(); hp=ASSET_DIR/"vuln_radar.png"
+        if hp.exists(): hero.setPixmap(QPixmap(str(hp)).scaledToWidth(520,Qt.TransformationMode.SmoothTransformation)); layout.addWidget(hero)
         top=QHBoxLayout(); self.report_path=QLineEdit(); self.report_path.setPlaceholderText("选择 gbt45502_security_report.json")
         self.choose_btn=QPushButton("选择报告"); self.load_btn=QPushButton("载入"); top.addWidget(self.report_path,1); top.addWidget(self.choose_btn); top.addWidget(self.load_btn); layout.addLayout(top)
         self.summary_bar=QHBoxLayout(); layout.addLayout(self.summary_bar)
@@ -245,7 +310,9 @@ class MainWindow(QMainWindow):
         self.nav=QTreeWidget(); self.nav.setObjectName("NavTree"); self.nav.setHeaderHidden(True); self.nav.setFixedWidth(310)
         logo=QLabel(); lp=ASSET_DIR/"logo.png"
         if lp.exists(): logo.setPixmap(QPixmap(str(lp)).scaledToWidth(260,Qt.TransformationMode.SmoothTransformation))
-        nav_box=QFrame(); nav_box.setObjectName("NavBox"); nav_layout=QVBoxLayout(nav_box); nav_layout.addWidget(logo); nav_layout.addWidget(self.nav,1); layout.addWidget(nav_box)
+        nav_img=QLabel(); shp=ASSET_DIR/"security_shield.png"
+        if shp.exists(): nav_img.setPixmap(QPixmap(str(shp)).scaledToWidth(270,Qt.TransformationMode.SmoothTransformation))
+        nav_box=QFrame(); nav_box.setObjectName("NavBox"); nav_layout=QVBoxLayout(nav_box); nav_layout.addWidget(logo); nav_layout.addWidget(nav_img); nav_layout.addWidget(self.nav,1); layout.addWidget(nav_box)
         self.stack=QStackedWidget(); layout.addWidget(self.stack,1)
         self.settings_page=SettingsPage(); self.test_page=TestPage(self.settings_page); self.results_page=ResultsPage()
         self.stack.addWidget(self.settings_page); self.stack.addWidget(self.test_page); self.stack.addWidget(self.results_page)

@@ -28,7 +28,7 @@ class VulnerabilityModule:
         self.add("8.1.2.7 / 8.1.4.1 / 8.2.2.9 / 8.3.3.3","漏洞管理-NVD/OSV/pip-audit联网辅助查询","根据software_inventory和配置的包清单查询NVD/OSV，并可调用pip-audit；结果为候选漏洞，需人工复核适用性。","WARN" if has else "INFO",findings,"若发现候选CVE/漏洞，应结合产品版本、配置、暴露面、补丁状态和CNVD/CNNVD结果进行复核闭环。")
         return self.results
     def query_nvd_inventory(self):
-        import pdb;pdb.set_trace()
+        # import pdb;pdb.set_trace()
         if not requests: return [{"error":"requests未安装"}]
         out=[]; vcfg=self.config.get("vulnerability_lookup",{}); api_key=vcfg.get("nvd_api_key") or ""; maxr=int(vcfg.get("nvd_max_results_per_item",10)); delay=float(vcfg.get("nvd_delay_sec",6.5 if not api_key else 0.7)); headers={"apiKey":api_key} if api_key else {}
         for item in self.config.get("software_inventory",[]):

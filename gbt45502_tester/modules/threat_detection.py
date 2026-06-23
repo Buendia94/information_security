@@ -13,7 +13,7 @@ class ThreatDetectionModule:
     def add(self,clause,name,method,status,evidence,suggestion=""):
         self.results.append(TestResult(clause,name,method,status,evidence,suggestion))
     def run(self)->List[TestResult]:
-        import pdb;pdb.set_trace()
+        # import pdb;pdb.set_trace()
         if not self.config.get("enabled_modules",{}).get("threat_detection",False):
             self.add("8.3.1.6","威胁检测-EICAR安全样本","配置 enabled_modules.threat_detection=false，未启用。","MANUAL",{},"如需半自动验证威胁检测，可安装ClamAV或配置企业EDR/杀毒扫描命令，使用EICAR安全测试文件。"); return self.results
         cfg=self.config.get("threat_detection",{}); allow=bool(cfg.get("allow_create_eicar",False)); scanner=cfg.get("scanner_command","clamscan {file}"); eicar_path=self.outdir/cfg.get("eicar_filename","eicar_test_file.com"); evidence={"eicar_path":str(eicar_path),"scanner_command_template":scanner}
