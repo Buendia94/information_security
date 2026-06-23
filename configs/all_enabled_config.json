@@ -3,7 +3,7 @@
   "http_timeout": 5,
   "auth_attempts": 3,
   "auth_delay": 1,
-  "allow_commands": false,
+  "allow_commands": true,
   "enabled_modules": {
     "core": true,
     "nmap": true,
@@ -13,7 +13,7 @@
   },
   "targets": [
     {
-      "ip": "192.168.1.50",
+      "ip": "10.10.60.56",
       "ports": [
         22,
         80,
@@ -25,22 +25,83 @@
         8443,
         9000
       ],
-      "ssh_user": "robot_test"
+      "ssh_user": "cao"
     }
   ],
   "expected_open_ports": [
     22,
     8080
   ],
-  "ssh_user": "test_user",
+  "ssh_user": "cao",
   "http_basic_tests": [],
-  "firmware_files": ["/home/buendia94/code/information/gbt45502_tester_project/samples/firmware.bin"],
-  "app_packages": ["/home/buendia94/code/information/gbt45502_tester_project/samples/robot_app.zip"],
+  "http_form_tests": [
+    {
+      "url": "http://10.10.60.56:8080/login",
+      "username": "cao",
+      "username_field": "username",
+      "password_field": "password",
+      "wrong_password": "WrongPassword_For_GBT45502_Test_123!",
+      "attempts": 3
+    }
+  ],
+  "replay_check_urls": [
+    {
+      "name": "后台查询接口重放测试",
+      "url": "http://10.10.60.56:8080/api/status",
+      "method": "GET",
+      "repeat": 3,
+      "interval_sec": 1,
+      "headers": {}
+    }
+  ],
+  "monitoring_urls": [
+    "http://10.10.60.56:8080/metrics",
+    "http://10.10.60.56:8080/api/system/status"
+  ],
+  "input_validation_tests": [
+    {
+      "url": "http://10.10.60.56:8080/api/search",
+      "method": "GET",
+      "param": "q"
+    }
+  ],
+  "role_access_tests": [
+    {
+      "url": "http://10.10.60.56:8080/api/admin/users",
+      "headers": {},
+      "expected_forbidden": true
+    },
+    {
+      "url": "http://10.10.60.56:8080/api/admin/users",
+      "headers": {
+        "Authorization": "Bearer INVALID_TOKEN_FOR_GBT45502_TEST"
+      },
+      "expected_forbidden": true
+    }
+  ],
+  "audit_trigger_urls": [
+    "http://10.10.60.56:8080/api/admin/users",
+    "http://10.10.60.56:8080/login"
+  ],
+  "firmware_files": [
+    "/home/buendia94/code/information/gbt45502_tester_project/samples/firmware.bin"
+  ],
+  "app_packages": [
+    "/home/buendia94/code/information/gbt45502_tester_project/samples/robot_app.zip"
+  ],
   "log_dirs": [
     "/var/log",
-    "/home/robot/.ros/log",
-    "/opt/robot/logs"
+    "/home/cao/.ros/log",
+    "/opt/cao/logs"
   ],
+  "storage_protection_paths": [
+    "/boot",
+    "/etc",
+    "/opt/robot"
+  ],
+  "secure_boot_check_command": "mokutil --sb-state",
+  "update_check_command": "cat /etc/os-release && uname -a",
+  "rollback_check_command": "lsblk",
   "software_inventory": [
     {
       "name": "Ubuntu",
@@ -58,13 +119,6 @@
       "nvd_keyword": "nginx 1.18.0"
     }
   ],
-  "replay_check_urls": [],
-  "monitoring_urls": [],
-  "input_validation_tests": [],
-  "role_access_tests": [],
-  "audit_trigger_urls": [],
-  "backup_command": "",
-  "restore_check_command": "",
   "nmap": {
     "path": "nmap",
     "args": "-sV --script vuln",

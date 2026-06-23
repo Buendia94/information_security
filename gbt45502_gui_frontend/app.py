@@ -271,9 +271,42 @@ class ResultsPage(QWidget):
         top=QHBoxLayout(); self.report_path=QLineEdit(); self.report_path.setPlaceholderText("选择 gbt45502_security_report.json")
         self.choose_btn=QPushButton("选择报告"); self.load_btn=QPushButton("载入"); top.addWidget(self.report_path,1); top.addWidget(self.choose_btn); top.addWidget(self.load_btn); layout.addLayout(top)
         self.summary_bar=QHBoxLayout(); layout.addLayout(self.summary_bar)
-        tabs=QTabWidget(); self.table=QTableWidget(); self.table.setColumnCount(5); self.table.setHorizontalHeaderLabels(["条款","测试项","状态","方法","建议"]); self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.markdown=QTextEdit(); self.markdown.setReadOnly(True); self.raw=QPlainTextEdit(); self.raw.setReadOnly(True)
-        tabs.addTab(self.table,"结果明细"); tabs.addTab(self.markdown,"Markdown报告"); tabs.addTab(self.raw,"JSON原文"); layout.addWidget(tabs,1)
+        tabs = QTabWidget()
+
+        self.table = QTableWidget()
+        self.table.setColumnCount(5)
+        self.table.setHorizontalHeaderLabels(["条款", "测试项", "状态", "方法", "建议"])
+
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        header.setStretchLastSection(False)
+        header.sectionDoubleClicked.connect(
+            lambda index: self.table.resizeColumnToContents(index)
+        )
+
+        self.table.setColumnWidth(0, 190)
+        self.table.setColumnWidth(1, 260)
+        self.table.setColumnWidth(2, 90)
+        self.table.setColumnWidth(3, 420)
+        self.table.setColumnWidth(4, 520)
+
+        self.table.setWordWrap(True)
+        self.table.setAlternatingRowColors(False)
+        self.table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+        self.markdown = QTextEdit()
+        self.markdown.setReadOnly(True)
+
+        self.raw = QPlainTextEdit()
+        self.raw.setReadOnly(True)
+
+        tabs.addTab(self.table, "结果明细")
+        tabs.addTab(self.markdown, "Markdown报告")
+        tabs.addTab(self.raw, "JSON原文")
+        layout.addWidget(tabs, 1)
+        # self.markdown=QTextEdit(); self.markdown.setReadOnly(True); self.raw=QPlainTextEdit(); self.raw.setReadOnly(True)
+        # tabs.addTab(self.table,"结果明细"); tabs.addTab(self.markdown,"Markdown报告"); tabs.addTab(self.raw,"JSON原文"); layout.addWidget(tabs,1)
         self.choose_btn.clicked.connect(self.choose_report); self.load_btn.clicked.connect(self.load_report)
     def choose_report(self):
         path,_=QFileDialog.getOpenFileName(self,"选择报告JSON",str(BACKEND_ROOT/"reports"),"JSON Files (*.json)")
